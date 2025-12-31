@@ -261,6 +261,29 @@
         mode: "0600"
       loop: "{{ extra_manifests }}"
 
+- name: Add cluster hosts to /etc/hosts for reliable hostname resolution
+  when: groups['k3s_cluster'] | length > 1
+  block:
+    - name: Build hosts entries for all cluster nodes
+      ansible.builtin.set_fact:
+        cluster_hosts_entries: |
+          {% for host in groups['k3s_cluster'] %}
+          {% set host_ip = hostvars[host]['ansible_default_ipv4']['address'] | default('') %}
+          {% set short_name = host.replace('.local', '') %}
+          {% if host_ip %}
+          {{ host_ip }} {{ short_name }} {{ host }}
+          {% endif %}
+          {% endfor %}
+
+    - name: Add cluster nodes to /etc/hosts
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED - K3S CLUSTER HOSTS"
+        block: "{{ cluster_hosts_entries }}"
+        create: false
+        mode: "0644"
+        backup: true
+
 - name: Setup optional private registry configuration
   when: registries_config_yaml is defined
   block:
